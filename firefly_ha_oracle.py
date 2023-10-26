@@ -57,7 +57,7 @@ class FireflyOracle(hass.Hass):
         )
 
     def _get_data_from_request(self, url):
-        print(f"Reading from {url} .")
+        print(f"Reading from '{url}'.")
         r = requests.get(
             self.args["firefly_url"] + url,
             headers={
@@ -66,19 +66,19 @@ class FireflyOracle(hass.Hass):
                 "Content-Type": "application/json",
             })
         data = r.json()
-        print(data)
-        if "links" in data and "next" in data["links"] and data["links"]["self"] != data["links"]["next"]:
+        real_data = data["data"]
+        if "links" in data and data["links"]["self"] != data["links"]["last"]:
             print("Next page is there!")
-            print(data["links"], data["meta"])
-        return data["data"]
+            real_data.extend(
+                self._get_data_from_request(data["links"]["next"]))
+        return real_data
 
     def _salary_prediction(self, prediction_date, balance_date, main_account_id):
         salary_counter = 0
         days_to_salary = self.args["salary_date"] - balance_date.day
-        print(days_to_salary)
         if days_to_salary < 0:
             print("Salary for this month is expected to be in already")
-        elif days_to_salary > 5:
+        elif days_to_salary > 10:
             print("Long time to this months salary - not checking it")
             salary_counter += 1
         else:
@@ -87,16 +87,18 @@ class FireflyOracle(hass.Hass):
                 day=self.args["salary_date"] - 10)
             transactions = self._get_data_from_request(
                 f"/api/v1/accounts/{main_account_id}/transactions?limit=100&start={from_date}&type=deposit")
+            salary_found = False
             for transaction in transactions:
                 transaction = transaction["attributes"]["transactions"][0]
-                print(transaction)
                 if float(self.args["salary_amount"]) * 0.8 < float(transaction["amount"]) < float(self.args["salary_amount"]) * 1.2:
                     print("This months salary is found")
-                    salary_counter += 1
-                else:
-                    print("Not a salary")
+                    salary_found = True
+            if not salary_found:
+                print("This months salary is not found")
+                salary_counter += 1
 
         counted_date = balance_date.date()
+        salary_counter -= 1
         while counted_date < prediction_date:
             counted_date = (counted_date + timedelta(days=30)
                             ).replace(day=counted_date.day)
