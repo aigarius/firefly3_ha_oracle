@@ -23,7 +23,11 @@ class FireflyOracle(hass.Hass):
                     "future_target_date": datetime.now(),
                 },
             )
-        (value, balance_date, future_date) = self._calculate_future()
+        future_date = datetime.now().date()
+        if future_date.day >= 5:
+            future_date = future_date + timedelta(days=30)
+        future_date = future_date.replace(day=5)
+        (value, balance_date) = self._calculate_future(future_date)
         ent.set_state(
             state=str(value),
             attributes={
@@ -33,8 +37,32 @@ class FireflyOracle(hass.Hass):
             },
         )
 
-    def _calculate_future(self):
-        prediction_date = self.args["prediction_date"]
+        future_date = future_date + timedelta(days=30)
+        future_date = future_date.replace(day=5)
+        ent = self.get_entity("sensor.firefly3_main_account_future_deep")
+        if not ent.exists():
+            ent.add(
+                state=Decimal(0.0),
+                attributes={
+                    "native_value": Decimal(0.0),
+                    "native_unit_of_measurement": "EUR",
+                    "state_class": "measurement",
+                    "device_class": "monetary",
+                    "current_balance_date": datetime.now(),
+                    "future_target_date": datetime.now(),
+                },
+            )
+        (value, balance_date) = self._calculate_future(future_date)
+        ent.set_state(
+            state=str(value),
+            attributes={
+                "native_value": str(value),
+                "current_balance_date": balance_date.date().isoformat(),
+                "future_target_date": future_date.isoformat(),
+            },
+        )
+
+    def _calculate_future(self, prediction_date):
         print(f"Predicting balance for {prediction_date}")
         running_balance = Decimal(0.0)
 
@@ -59,7 +87,6 @@ class FireflyOracle(hass.Hass):
         return (
             running_balance,
             main_acc["balance_date"],
-            prediction_date,
         )
 
     def _get_data_from_request(self, url):
@@ -159,6 +186,9 @@ class FireflyOracle(hass.Hass):
                 if balance_date.month < prediction_date.month and repayment_date < prediction_date.day:
                     print("Current balance will roll over by next month, adding that up")
                     outstanding_balance += current_balance
+                if (prediction_date - balance_date.date()) > timedelta(days=30):
+                    print("Current balance will roll over, adding that up")
+                    outstanding_balance += current_balance
                 if repayment_date + 6 <= balance_date.day:
                     print("Current month credit card balance should already be on the main account")
                 if repayment_date <= balance_date.day < repayment_date + 6:
@@ -181,14 +211,20 @@ class FireflyOracle(hass.Hass):
                     else:
                         outstanding_balance += amount_in_flight
                         # Let's see if it arrived in main account
+                        main_account_found = False
                         for transfer in transfers:
                             transfer = transfer["attributes"]
                             for sub_trans in transfer["transactions"]:
                                 if sub_trans["source_id"] == str(main_account_id):
                                     print(sub_trans["amount"])
                                     if Decimal(sub_trans["amount"]) == amount_in_flight:
-                                        print(f"Found matching transfer from main account")
-                                        outstanding_balance -= amount_in_flight
+                                        print("Found matching transfer from main account")
+                                        main_account_found = False
+                        if main_account_found:
+                            print("Transfer arrived in the main account already")
+                        else:
+                            print("Transfer still in flight, adding that up")
+                            outstanding_balance += amount_in_flight
         print(f"Credit card balances: {outstanding_balance}")
         return outstanding_balance
 
