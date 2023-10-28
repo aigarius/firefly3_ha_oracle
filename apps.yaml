@@ -1,4 +1,4 @@
-appname:
+firefly_ha_oracle:
   class: FireflyOracle
   module: firefly_ha_oracle
   firefly_api_token: !secret firefly_api_token
