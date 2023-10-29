@@ -1,4 +1,8 @@
 firefly_ha_oracle:
   class: FireflyOracle
   module: firefly_ha_oracle
-  firefly_api_token: !secret firefly_api_token
+  firefly_url: http://192.168.0.52:3475
+  main_account_name: Mybank giro
+  salary_amount: 3000
+  salary_date: 26
+  firefly_api_token: ""
