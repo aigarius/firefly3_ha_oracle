@@ -1,8 +1,8 @@
 # firefly3_ha_oracle
 AppDaemon script to integrate Firefly III data into Home Assistant and predict some future
 
-secrets.yaml needs to define the "firefly_app_token" variable with a personal access token
-from the Firefly III instance being used.
+apps.yaml needs to define the "firefly_app_token" variable with a personal access token
+from the Firefly III instance being used as well as main account name and salary info
 
 You should be able to run the script with the following command locally:
 
