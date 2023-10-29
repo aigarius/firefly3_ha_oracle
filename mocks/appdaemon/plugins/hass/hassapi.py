@@ -13,6 +13,7 @@ class Entity:
 
 class Hass:
     def __init__(self):
+        self.log = print
         self.args = {
             "firefly_url": "http://192.168.0.52:3475",
             "main_account_name": "Sparkasse giro",

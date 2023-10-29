@@ -63,7 +63,7 @@ class FireflyOracle(hass.Hass):
         )
 
     def _calculate_future(self, prediction_date):
-        print(f"Predicting balance for {prediction_date}")
+        self.log(f"Predicting balance for {prediction_date}")
         running_balance = Decimal(0.0)
 
         # Get id, balance and date of the main account
@@ -72,19 +72,19 @@ class FireflyOracle(hass.Hass):
             return self._return_past_balance(main_acc["id"], prediction_date)
 
         running_balance += main_acc["balance"]
-        print(
+        self.log(
             f"Main account balance: {running_balance} on {main_acc['balance_date'].date()}")
         running_balance += self._salary_prediction(
             prediction_date, balance_date=main_acc["balance_date"], main_account_id=main_acc["id"]
         )
-        print(f"Balance after salary: {running_balance}")
+        self.log(f"Balance after salary: {running_balance}")
         running_balance -= self._bills_due_amount(
             prediction_date, balance_date=main_acc["balance_date"])
-        print(f"Balance after bills: {running_balance}")
+        self.log(f"Balance after bills: {running_balance}")
         running_balance -= self._credit_cards_due(
             prediction_date, balance_date=main_acc["balance_date"], main_account_id=main_acc["id"]
         )
-        print(f"Balance after credit cards: {running_balance}")
+        self.log(f"Balance after credit cards: {running_balance}")
 
         return (
             running_balance,
@@ -92,7 +92,7 @@ class FireflyOracle(hass.Hass):
         )
 
     def _get_data_from_request(self, url):
-        print(f"Reading from '{url}'.")
+        self.log(f"Reading from '{url}'.")
         r = requests.get(
             self.args["firefly_url"] + url,
             headers={
@@ -104,7 +104,7 @@ class FireflyOracle(hass.Hass):
         data = r.json()
         real_data = data["data"]
         if "links" in data and data["links"]["self"] != data["links"]["last"]:
-            print("Next page is there!")
+            self.log("Next page is there!")
             real_data.extend(
                 self._get_data_from_request(data["links"]["next"]))
         return real_data
@@ -113,12 +113,12 @@ class FireflyOracle(hass.Hass):
         salary_counter = 0
         days_to_salary = self.args["salary_date"] - balance_date.day
         if days_to_salary < 0:
-            print("Salary for this month is expected to be in already")
+            self.log("Salary for this month is expected to be in already")
         elif days_to_salary > 10:
-            print("Long time to this months salary - not checking it")
+            self.log("Long time to this months salary - not checking it")
             salary_counter += 1
         else:
-            print("Salary close, should check if it's in already")
+            self.log("Salary close, should check if it's in already")
             from_date = datetime.now().date().replace(
                 day=self.args["salary_date"] - 10)
             transactions = self._get_data_from_request(
@@ -132,10 +132,10 @@ class FireflyOracle(hass.Hass):
                     < Decimal(transaction["amount"])
                     < Decimal(self.args["salary_amount"]) * Decimal(1.2)
                 ):
-                    print("This months salary is found")
+                    self.log("This months salary is found")
                     salary_found = True
             if not salary_found:
-                print("This months salary is not found")
+                self.log("This months salary is not found")
                 salary_counter += 1
 
         counted_date = balance_date.date()
@@ -146,7 +146,7 @@ class FireflyOracle(hass.Hass):
             salary_counter += 1
 
         total = salary_counter * Decimal(self.args["salary_amount"])
-        print(
+        self.log(
             f"Expecting {salary_counter} months of salary until {prediction_date}, total: {total}")
         return total
 
@@ -161,7 +161,7 @@ class FireflyOracle(hass.Hass):
                     bill["next_expected_match"]).date()
                 if bill["repeat_freq"] == "monthly":
                     while bill_date < prediction_date:
-                        print(
+                        self.log(
                             f"Adding bill {bill['name']} in {bill_date} for {bill['amount_max']}")
                         bill_date = (bill_date + timedelta(days=30) * (int(bill["skip"] + 1))).replace(
                             day=bill_date.day
@@ -169,10 +169,10 @@ class FireflyOracle(hass.Hass):
                         running_balance += Decimal(bill["amount_max"])
                 else:
                     if bill_date < prediction_date:
-                        print(
+                        self.log(
                             f"Adding bill {bill['name']} in {bill_date} for {bill['amount_max']}")
                         running_balance += float(bill["amount_max"])
-        print(f"All bills due: {running_balance}")
+        self.log(f"All bills due: {running_balance}")
         return running_balance
 
     def _credit_cards_due(self, prediction_date, balance_date, main_account_id):
@@ -184,29 +184,30 @@ class FireflyOracle(hass.Hass):
             account = account["attributes"]
             if account["account_role"] == "ccAsset" and account["credit_card_type"] == "monthlyFull":
                 current_balance = Decimal(account["current_balance"])
-                print(
+                self.log(
                     f"Checking credit card {account['name']} with balance {current_balance}")
                 repayment_date = datetime.fromisoformat(
                     account["monthly_payment_date"]).day
-                print(f"Repayment expected on {repayment_date}")
+                self.log(f"Repayment expected on {repayment_date}")
                 if (
                     balance_date.month == prediction_date.month
                     and balance_date.day < repayment_date < prediction_date.day
                 ):
-                    print("Current balance will roll over this month, adding that up")
+                    self.log(
+                        "Current balance will roll over this month, adding that up")
                     outstanding_balance -= current_balance
                 if balance_date.month < prediction_date.month and repayment_date < prediction_date.day:
-                    print(
+                    self.log(
                         "Current balance will roll over by next month, adding that up")
                     outstanding_balance -= current_balance
                 if (prediction_date - balance_date.date()) > timedelta(days=30):
-                    print("Current balance will roll over, adding that up")
+                    self.log("Current balance will roll over, adding that up")
                     outstanding_balance -= current_balance
                 if repayment_date + 6 <= balance_date.day:
-                    print(
+                    self.log(
                         "Current month credit card balance should already be on the main account")
                 if repayment_date <= balance_date.day < repayment_date + 6:
-                    print("Repayment could be in transfer, need to check")
+                    self.log("Repayment could be in transfer, need to check")
                     check_date = balance_date.replace(day=repayment_date - 1)
                     end_date = check_date + timedelta(days=7)
                     transfers = self._get_data_from_request(
@@ -219,10 +220,10 @@ class FireflyOracle(hass.Hass):
                             if sub_trans["destination_id"] == str(account_id):
                                 amount_in_flight = Decimal(
                                     sub_trans["amount"]).quantize(Decimal("0.01"))
-                                print(
+                                self.log(
                                     f"Found transfer to card account: {amount_in_flight} on {sub_trans['date']}")
                     if not amount_in_flight:
-                        print(
+                        self.log(
                             f"No credit card repayment found - adding current balance of {current_balance}")
                         outstanding_balance += current_balance
                     else:
@@ -233,15 +234,17 @@ class FireflyOracle(hass.Hass):
                             for sub_trans in transfer["transactions"]:
                                 if sub_trans["source_id"] == str(main_account_id):
                                     if Decimal(sub_trans["amount"]) == amount_in_flight:
-                                        print(
+                                        self.log(
                                             "Found matching transfer from main account")
                                         main_account_found = True
                         if main_account_found:
-                            print("Transfer arrived in the main account already")
+                            self.log(
+                                "Transfer arrived in the main account already")
                         else:
-                            print("Transfer still in flight, adding that up")
+                            self.log(
+                                "Transfer still in flight, adding that up")
                             outstanding_balance += amount_in_flight
-        print(f"Credit card balances: {outstanding_balance}")
+        self.log(f"Credit card balances: {outstanding_balance}")
         return outstanding_balance
 
     def _get_main_account_info(self):
