@@ -196,7 +196,7 @@ class FireflyOracle(hass.Hass):
                     self.log(
                         "Current balance will roll over this month, adding that up")
                     outstanding_balance -= current_balance
-                if balance_date.month < prediction_date.month and repayment_date < prediction_date.day:
+                if balance_date.month < prediction_date.month and repayment_date > balance_date.day:
                     self.log(
                         "Current balance will roll over by next month, adding that up")
                     outstanding_balance -= current_balance
@@ -258,7 +258,7 @@ class FireflyOracle(hass.Hass):
                 return {
                     "id": account_id,
                     "balance": Decimal(account["current_balance"]),
-                    "balance_date": datetime.fromisoformat(account["updated_at"]),
+                    "balance_date": datetime.fromisoformat(account["current_balance_date"]),
                 }
 
 
